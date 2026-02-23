@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+  <defs>
+    <filter id="peak-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#9d4edd" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+  <!-- Purple layer (offset bottom-right for depth) -->
+  <path d="M62 24 L98 90 L26 90 Z" fill="#9d4edd"/>
+  <!-- White peak / chevron (rounded corners) -->
+  <path
+    d="M60 30 L90 82 L30 82 Z"
+    fill="white"
+    stroke="white"
+    stroke-width="1.5"
+    stroke-linejoin="round"
+    stroke-linecap="round"
+    filter="url(#peak-glow)"
+  />
+</svg>

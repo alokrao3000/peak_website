@@ -1,0 +1,343 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* =========================
+       Helper functions
+    ========================= */
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    /* =========================
+       BUSINESS USERS
+    ========================= */
+
+    match /businessUsers/{userId} {
+      allow read, update, delete: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+        request.resource.data.keys().hasAll([
+          'uid', 'email', 'businessName', 'organizationSize', 'organizationType',
+          'firstName', 'lastName', 'createdAt'
+        ]) &&
+        request.resource.data.uid == userId &&
+        request.resource.data.email is string &&
+        request.resource.data.businessName is string &&
+        request.resource.data.organizationSize is number &&
+        request.resource.data.organizationType is string &&
+        request.resource.data.firstName is string &&
+        request.resource.data.lastName is string;
+    }
+
+    /* =========================
+       EVENTS (business-created)
+    ========================= */
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      // Create: any authenticated user can create an event with themselves as owner
+      allow create: if request.auth != null
+        && request.resource.data.ownerId is string
+        && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isAuthenticated() &&
+        resource.data.ownerId == request.auth.uid;
+
+      match /guests/{guestId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated();
+      }
+    }
+
+    /* =========================
+       USERS COLLECTION
+    ========================= */
+
+    match /users/{userId} {
+
+      allow read: if isAuthenticated();
+
+      allow create: if isOwner(userId) &&
+        request.resource.data.keys().hasAll(['name', 'email']) &&
+        request.resource.data.name is string &&
+        request.resource.data.email is string;
+
+      // Owner can do any update
+      allow update: if isOwner(userId);
+
+      // Other users can only modify friend-related fields
+      allow update: if isAuthenticated() &&
+        request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly(['friendRequests', 'sentFriendRequests', 'friends']);
+
+      allow delete: if isOwner(userId);
+
+      match /notifications/{notificationId} {
+
+        // Owner can read all their notifications
+        // Sender can read notifications they sent (for duplicate checking)
+        allow read: if isOwner(userId) ||
+          (isAuthenticated() && resource.data.senderID == request.auth.uid);
+
+        allow create: if isAuthenticated() &&
+          request.resource.data.keys()
+            .hasAll(['type', 'senderID', 'createdAt']) &&
+          request.resource.data.senderID == request.auth.uid;
+
+        allow update: if isOwner(userId) &&
+          request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasOnly(['isRead']);
+
+        // Owner can delete any notification
+        // Sender can delete notifications they sent (for unsending friend requests)
+        allow delete: if isOwner(userId) ||
+          (isAuthenticated() && resource.data.senderID == request.auth.uid);
+      }
+
+      // User's own mightGo subcollection
+      match /mightGo/{venueId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    /* =========================
+       VENUES
+    ========================= */
+
+    match /venues/{venueId} {
+
+      allow read: if isAuthenticated();
+      allow write: if false;
+
+      /* ---------- Attendees ---------- */
+      match /attendees/{odocUserId} {
+
+        allow read: if isAuthenticated();
+
+        allow create: if isOwner(odocUserId) &&
+          request.resource.data.keys().hasAll(['userId', 'userName']) &&
+          request.resource.data.userId == odocUserId;
+
+        allow update, delete: if isOwner(odocUserId);
+      }
+
+      /* ---------- Comments ---------- */
+      match /comments/{commentId} {
+
+        allow read: if isAuthenticated();
+
+        // Create: user can create their own comment or reply
+        // Required fields: userId, userName, text, createdAt
+        // Optional fields: likeCount, likedBy, isAnonymous, anonymousNumber, 
+        //                  graduationYear, isNYU, parentCommentId, replyCount
+        allow create: if isAuthenticated() &&
+          request.resource.data.keys()
+            .hasAll(['userId', 'userName', 'text', 'createdAt']) &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.userName is string &&
+          request.resource.data.text is string;
+
+        // Update: owner can edit, OR any authenticated user can like/unlike,
+        // OR any authenticated user can increment replyCount (when adding a reply)
+        allow update: if isAuthenticated() &&
+          (
+            // Owner can update anything
+            resource.data.userId == request.auth.uid ||
+            // Others can only update likedBy and likeCount (for liking)
+            request.resource.data.diff(resource.data)
+              .affectedKeys()
+              .hasOnly(['likedBy', 'likeCount']) ||
+            // Others can only update replyCount (when someone replies to this comment)
+            request.resource.data.diff(resource.data)
+              .affectedKeys()
+              .hasOnly(['replyCount'])
+          );
+
+        // Delete: owner can delete their own comment
+        // OR if this is a reply, the parent comment owner can delete it
+        // (allows batch deletion of parent comment + all its replies)
+        allow delete: if isAuthenticated() &&
+          (
+            // Owner can delete their own comment
+            resource.data.userId == request.auth.uid ||
+            // Parent comment owner can delete replies to their comment
+            (
+              resource.data.parentCommentId != null &&
+              get(/databases/$(database)/documents/venues/$(venueId)/comments/$(resource.data.parentCommentId)).data.userId == request.auth.uid
+            )
+          );
+      }
+
+      /* ---------- Ratings (voting) ---------- */
+      match /ratings/{odocUserId} {
+
+        allow read: if isAuthenticated();
+
+        allow create: if isOwner(odocUserId) &&
+          request.resource.data.userId == odocUserId;
+
+        allow update: if isOwner(odocUserId) &&
+          request.resource.data.userId == odocUserId;
+
+        allow delete: if isOwner(odocUserId);
+      }
+
+      /* ---------- MightGo (venue-level) ---------- */
+      match /mightGo/{userId} {
+        allow read: if isAuthenticated();
+        allow write: if isOwner(userId);
+      }
+    }
+
+    /* =========================
+       VENUE STORIES
+    ========================= */
+
+    match /venue_stories/{storyId} {
+
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasAll([
+          'userId',
+          'userName',
+          'venueId',
+          'venueName',
+          'mediaURL',
+          'mediaType',
+          'timestamp'
+        ]) &&
+        request.resource.data.userId == request.auth.uid;
+
+      // Owner can update anything, others can only update thanksCount (for thanks feature)
+      allow update: if isAuthenticated() &&
+        (
+          // Owner can update anything
+          (resource.data.userId == request.auth.uid &&
+           request.resource.data.userId == request.auth.uid) ||
+          // Others can only update thanksCount
+          request.resource.data.diff(resource.data)
+            .affectedKeys()
+            .hasOnly(['thanksCount'])
+        );
+
+      allow delete: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
+
+      /* ---------- Thanks ---------- */
+      match /thanks/{odocUserId} {
+        allow read: if isAuthenticated();
+
+        // Users can only create their own thanks document
+        allow create: if isOwner(odocUserId) &&
+          request.resource.data.userId == odocUserId;
+
+        // Users can only delete their own thanks
+        allow delete: if isOwner(odocUserId);
+      }
+
+      /* ---------- Views ---------- */
+      match /views/{odocUserId} {
+        allow read: if isAuthenticated();
+
+        // Users can only create their own view document
+        allow create: if isOwner(odocUserId);
+
+        allow update, delete: if isOwner(odocUserId);
+      }
+    }
+
+    /* =========================
+       REPORTS
+    ========================= */
+
+    match /reports/{reportId} {
+
+      allow read: if isAuthenticated() &&
+        (
+          resource.data.reporterUID == request.auth.uid ||
+          resource.data.reportedUID == request.auth.uid
+        );
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys()
+          .hasAll(['reporterUID', 'reportedUID', 'timestamp']) &&
+        request.resource.data.reporterUID == request.auth.uid;
+
+      allow update, delete: if false;
+    }
+
+    /* =========================
+       PUSH TRIGGERS
+    ========================= */
+
+    match /push_notification_triggers/{triggerId} {
+
+      allow create: if isAuthenticated() &&
+        (
+          // Standard triggers (friend requests, venue invites, etc.)
+          (
+            request.resource.data.keys()
+              .hasAll(['type', 'senderUID', 'receiverUID']) &&
+            (
+              request.resource.data.senderUID == request.auth.uid ||
+              request.resource.data.receiverUID == request.auth.uid
+            )
+          ) ||
+          // Peek thanks triggers
+          (
+            request.resource.data.type == 'peekThanks' &&
+            request.resource.data.keys()
+              .hasAll(['type', 'storyId', 'storyOwnerId', 'thankerUserId']) &&
+            request.resource.data.thankerUserId == request.auth.uid
+          )
+        );
+
+      allow read, update, delete: if false;
+    }
+
+    /* =========================
+       FEATURED (Recommended Spots)
+    ========================= */
+
+    match /featured/{featuredId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    /* =========================
+       ACTIVE VENUES (for Explore tab)
+    ========================= */
+
+    match /activeVenues/{venueId} {
+      allow read: if isAuthenticated();
+      // Authenticated users can create/update/delete (e.g. when creating/deleting events)
+      allow create, update, delete: if isAuthenticated();
+    }
+
+    /* =========================
+       METADATA (public stats)
+    ========================= */
+
+    match /metadata/{docId} {
+      allow read: if true;   // Public read (used for user count on landing page)
+      allow write: if false; // Only Cloud Functions should write
+    }
+
+    /* =========================
+       COLLECTION GROUP QUERIES
+    ========================= */
+
+    // Collection group rule for mightGo - enables collection group queries
+    match /{path=**}/mightGo/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+  }
+}

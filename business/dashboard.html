@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | Peak Business</title>
+    <link rel="stylesheet" href="business.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="business-page dark-theme">
+    <header class="dashboard-header">
+        <div class="container">
+            <a href="../index.html" class="logo-placeholder">
+                <div class="logo-circle"><i class="fas fa-mountain"></i></div>
+                <span class="logo-text">PEAK</span>
+            </a>
+            <div class="header-actions">
+                <span class="user-email" id="user-email"></span>
+                <button type="button" id="btn-create-event" class="btn-primary">Create event</button>
+                <button type="button" id="btn-logout" class="btn-ghost">Log out</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="dashboard-main container">
+        <section class="analytics-section" id="analytics-section">
+            <h2>Event analytics</h2>
+            <p class="section-desc">Overview of your events and performance.</p>
+            <div class="analytics-placeholder" id="analytics-placeholder">
+                <div class="onboarding-tooltip" id="onboarding-tooltip">
+                    <p><strong>Here is where you will see your event analytics.</strong> Your total attendees, revenue, and event stats will appear here once you have events.</p>
+                    <div class="tooltip-pointer" id="tooltip-pointer">
+                        <i class="fas fa-hand-point-right"></i>
+                        <span>Click <strong>Create event</strong> to get started</span>
+                    </div>
+                    <button type="button" id="dismiss-onboarding" class="btn-ghost btn-sm">Got it</button>
+                </div>
+                <div class="analytics-cards" id="analytics-cards">
+                    <!-- Summary cards when there are events -->
+                </div>
+            </div>
+        </section>
+
+        <section class="events-section">
+            <h2>Your events</h2>
+            <div class="events-list" id="events-list">
+                <p class="empty-state" id="events-empty">No events yet. Create your first event to get started.</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+    <script src="../firebase-config.js"></script>
+    <script src="firebase-auth.js"></script>
+    <script src="firebase-db.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>
